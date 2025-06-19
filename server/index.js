@@ -200,8 +200,6 @@ app.delete("/api/guest/:id", (req, res) => {
   });
 });
 
-
-
 // ✅ 撈 guest 資料
 app.get("/api/guests", (req, res) => {
   db.query("SELECT * FROM guest ORDER BY guest_id DESC", (err, results) => {
@@ -209,6 +207,44 @@ app.get("/api/guests", (req, res) => {
     res.json({ success: true, data: results });
   });
 });
+
+// ✅ 節目表
+app.post("/api/generate-program", async (req, res) => {
+  const { style } = req.body;
+  const sql = "SELECT interest FROM guests";
+
+  db.query(sql, async (err, results) => {
+    if (err) return res.status(500).json({ success: false, message: "資料庫錯誤" });
+
+    const interestSet = new Set();
+    results.forEach(row => {
+      row.interest?.split(",").map(i => i.trim()).forEach(i => interestSet.add(i));
+    });
+
+    const interests = [...interestSet].join("、");
+
+    const prompt = `
+請根據以下婚禮風格與賓客興趣，幫我生成一份對應的婚禮節目流程表，使用時間軸格式：
+
+婚禮風格：${style}
+賓客興趣：${interests}
+
+請務必以 13:00 開始、每半小時一個節目為主，並展現風格與興趣的結合，語氣溫馨自然。
+`;
+
+    try {
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent(prompt);
+      const reply = result.response.candidates[0].content.parts[0].text;
+
+      res.json({ success: true, program: reply });
+    } catch (err) {
+      console.error("❌ Gemini 失敗：", err);
+      res.status(500).json({ success: false, message: "AI 生成錯誤" });
+    }
+  });
+});
+
 
 // ✅ 啟動伺服器
 app.listen(port, () => {
