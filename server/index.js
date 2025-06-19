@@ -164,6 +164,28 @@ app.get("/api/guests", (req, res) => {
   });
 });
 
+// ✅刪除指定 ID 的賓客
+app.delete("/api/guests/:id", (req, res) => {
+  const guestId = req.params.id;
+
+  const sql = "DELETE FROM guests WHERE guest_id = ?";
+  db.query(sql, [guestId], (err, result) => {
+    if (err) {
+      console.error("❌ 刪除錯誤：", err);
+      return res.status(500).json({ success: false, message: "刪除失敗" });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "找不到該賓客" });
+    }
+
+    res.json({ success: true });
+  });
+});
+
+
+
+
 // ✅ 啟動伺服器
 app.listen(port, () => {
   console.log(`🤖 Gemini機器人打開摟 at http://localhost:${port}`);
