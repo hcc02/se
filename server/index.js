@@ -245,6 +245,7 @@ app.post("/api/generate-program", async (req, res) => {
   });
 });
 
+
 // ✅ 啟動伺服器
 app.listen(port, () => {
   console.log(`🤖 Gemini機器人打開摟 at http://localhost:${port}`);
