@@ -138,23 +138,69 @@ app.get("/api/records", (req, res) => {
 const upload = multer({ dest: "uploads/" });
 app.post("/api/import-guests", upload.single("csvFile"), (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: "未收到檔案" });
+
   const filePath = req.file.path;
   const guests = [];
+
+  let rowIndex = 0;
+
   fs.createReadStream(filePath)
     .pipe(csv(["name", "email", "relation", "interest"]))
     .on("data", (row) => {
-      if (row.name && row.email) guests.push(row);
+      // ✅ 跳過第一列（即使有 BOM）
+      if (rowIndex === 0 && (
+          row.name.trim().toLowerCase() === "name" ||
+          row.name.trim().toLowerCase().includes("姓名")
+        )) {
+        rowIndex++;
+        return;
+      }
+
+      // ✅ 檢查必要欄位
+      if (row.name && row.email) {
+        guests.push({
+          name: row.name.trim(),
+          email: row.email.trim(),
+          relation: row.relation?.trim() || "",
+          interest: row.interest?.trim() || ""
+        });
+      }
+
+      rowIndex++;
     })
     .on("end", () => {
-      fs.unlinkSync(filePath);
+      fs.unlinkSync(filePath); // ✅ 刪掉暫存檔
+
+      if (guests.length === 0) {
+        return res.status(400).json({ success: false, message: "無有效資料" });
+      }
+
       const sql = "INSERT INTO guest (name, email, relation, interest) VALUES ?";
       const values = guests.map(g => [g.name, g.email, g.relation, g.interest]);
+
       db.query(sql, [values], (err, result) => {
-        if (err) return res.status(500).json({ success: false, message: "寫入資料庫失敗" });
+        if (err) {
+          console.error("❌ 匯入錯誤：", err);
+          return res.status(500).json({ success: false, message: "資料庫寫入錯誤" });
+        }
         res.json({ success: true, message: "匯入成功", count: result.affectedRows });
       });
     });
 });
+
+// ✅ 刪除單筆 guest 資料
+app.delete("/api/guest/:id", (req, res) => {
+  const guestId = req.params.id;
+  db.query("DELETE FROM guest WHERE guest_id = ?", [guestId], (err, result) => {
+    if (err) {
+      console.error("❌ 刪除失敗：", err);
+      return res.status(500).json({ success: false, message: "資料庫錯誤" });
+    }
+    res.json({ success: true, message: "刪除成功" });
+  });
+});
+
+
 
 // ✅ 撈 guest 資料
 app.get("/api/guests", (req, res) => {
@@ -163,28 +209,6 @@ app.get("/api/guests", (req, res) => {
     res.json({ success: true, data: results });
   });
 });
-
-// ✅刪除指定 ID 的賓客
-app.delete("/api/guests/:id", (req, res) => {
-  const guestId = req.params.id;
-
-  const sql = "DELETE FROM guests WHERE guest_id = ?";
-  db.query(sql, [guestId], (err, result) => {
-    if (err) {
-      console.error("❌ 刪除錯誤：", err);
-      return res.status(500).json({ success: false, message: "刪除失敗" });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: "找不到該賓客" });
-    }
-
-    res.json({ success: true });
-  });
-});
-
-
-
 
 // ✅ 啟動伺服器
 app.listen(port, () => {
